@@ -1,0 +1,1 @@
+-B build29 -DSDKCONFIG=build29/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.common;sdkconfig.epd29"

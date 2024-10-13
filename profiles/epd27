@@ -1,0 +1,1 @@
+-B build27 -DSDKCONFIG=build27/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.common;sdkconfig.epd27"

@@ -1,0 +1,14 @@
+menu "ePaper Configuration"
+
+	choice
+		prompt "Model number"
+		default EPD_29
+		help
+			Waveshare Model
+		config EPD_29
+			bool "EPD_2in9"
+		config EPD_27
+			bool "EPD_2in7_V2"
+	endchoice
+
+endmenu

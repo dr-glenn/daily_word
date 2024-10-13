@@ -1,0 +1,8 @@
+build/
+build27/
+build29/
+.vscode/
+.devcontainer/
+sdkconfig
+sdkconfig.old
+sdkconfig.common
