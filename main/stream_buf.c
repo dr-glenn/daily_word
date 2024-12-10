@@ -1,3 +1,4 @@
+/* Fill STREAM_BUF with web page content, looking for start and end tags that delimit the content */
 #include <stdio.h>
 #include <malloc.h>
 #include <stdbool.h>
@@ -6,8 +7,15 @@
 #include "stream_buf.h"
 #include "word_site.h"
 
+static bool part_match = false;	// partial match of either start or end
+static bool found_start = false;	// start has been found
+static bool found_end = false;		// end has been found
+
 void stream_buf_init(STREAM_BUF *stream_buf, int max_buf_len)
 {
+	part_match = false;	// partial match of either start or end
+	found_start = false;	// start has been found
+	found_end = false;		// end has been found
 	stream_buf->found_start = stream_buf->found_end = false;
 	stream_buf->part_start = stream_buf->part_end = false;
     stream_buf->idx = stream_buf->buf_idx = stream_buf->good_idx = 0;
@@ -15,7 +23,7 @@ void stream_buf_init(STREAM_BUF *stream_buf, int max_buf_len)
     //strcpy(stream_buf->match_end, "See the entry ></a></p>");
     strcpy(stream_buf->match_end, WORD_END);
     stream_buf->buf_len = max_buf_len;
-    stream_buf->buffer = (char*) malloc(max_buf_len);
+    stream_buf->buffer = (char*) calloc(max_buf_len, sizeof(char));
 	stream_buf->ptr = stream_buf->buffer;
 	strcpy(stream_buf->buffer, "not used");
 }
@@ -31,9 +39,6 @@ int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart)
 	 * NOTE: when found_start==true then bStart should be set to false by calling routine
 	 */
 	int retval = 0;
-	static bool part_match = false;	// partial match of either start or end
-	static bool found_start = false;	// start has been found
-	static bool found_end = false;		// end has been found
 	static char* match_ptr;
 	
 	if (bStart) {
@@ -108,7 +113,7 @@ int main(void)
 	// open HTML file and read it, 512 bytes at a time, as though we're streaming from HTTPS server
 	char buf[512];
 	const char* word_file = "merriam.html";
-	char* web_buffer = (char*)malloc(RING_LEN);
+	char* web_buffer = (char*)calloc(RING_LEN, sizeof(char));
 	int file_len = 0;
 	bool bStart = true;
 	FILE* fp = fopen(word_file, "r");

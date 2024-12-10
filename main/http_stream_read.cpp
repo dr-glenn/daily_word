@@ -11,18 +11,29 @@ extern "C" int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, boo
 //#define WORD_URL "https://www.merriam-webster.com/word-of-the-day/"
 static const char *TAG = "http";
 
+// TODO: create a function for cleaning up STREAM_BUF when main caller is done.
+// TODO: maybe make this into a C++ class.
+
+/**
+ * HTTPS conenction to download web page.
+ * The website for word-of-the-day contains lots of config that we must skip until we get
+ * to the word and its definition. An ESP32 has limited memory, so this function throws away
+ * most of the stream until we see a unique start string. Then we store until a unique end tag is found.
+ * The storage buffer is malloc'ed here and must be freed by the caller.
+ * @param stream_buf - contains parameters that define when to start storing page and when to stop.
+ */
 int http_perform_as_stream_reader(STREAM_BUF *stream_buf)
 {
     bool bStart = true;
     int match_stat;
-    char *buffer = (char *)malloc(MAX_HTTP_RECV_BUFFER);    // fetch web page in chunks
+    char *buffer = (char *)malloc(MAX_HTTP_RECV_BUFFER);    // temp buffer, fetch web page in chunks
     if (buffer == NULL) {
         ESP_LOGE(TAG, "Cannot malloc http receive buffer");
         return -1;
     }
     // use CRT bundle containing Mozilla root CA store
     esp_http_client_config_t config = {};
-    config.url = WORD_URL;
+    config.url = WORD_URL;  // e.g., Merriam-Webster website
     config.transport_type = HTTP_TRANSPORT_OVER_SSL;
     config.crt_bundle_attach = esp_crt_bundle_attach;
 
@@ -73,7 +84,7 @@ int http_perform_as_stream_reader(STREAM_BUF *stream_buf)
 	ESP_LOGD(TAG, "stream_buf.buffer len = %d\n", strlen(stream_buf->buffer));
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
-    // TODO: free stream_buf also
+    // TODO: caller should later free stream_buf
     free(buffer);
     return 0;
 }

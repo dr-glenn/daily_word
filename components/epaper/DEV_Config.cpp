@@ -42,7 +42,7 @@ void GPIO_Config(void)
     epaper_spi[5] = { .pin=EPD_CS_PIN, .mode=GPIO_MODE_OUTPUT, .init=HIGH };
 
     for (int i=0; i < 6; i++) {
-        gpio_reset_pin(epaper_spi[i].pin);
+        gpio_reset_pin(epaper_spi[i].pin);  // pins default to IOMUX. Reset changes pin to GPIO.
         gpio_set_direction(epaper_spi[i].pin, epaper_spi[i].mode);
         if (epaper_spi[i].init != PIN_NOT_SET) gpio_set_level(epaper_spi[i].pin, epaper_spi[i].init);
     }
@@ -56,7 +56,9 @@ void GPIO_Config(void)
     pins |= 1 << EPD_MOSI_PIN;
     pins |= 1 << EPD_CS_PIN;
     pins |= 1 << GPIO_NUM_3;
+#if 0
     gpio_dump_io_configuration(stdout, pins);
+#endif
 }
 
 void GPIO_Mode(gpio_num_t GPIO_Pin, UWORD Mode)
