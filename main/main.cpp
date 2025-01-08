@@ -10,7 +10,8 @@
  */
 #define REFRESH_TEST 0
 #define NTP 1   // use network time protocol
-#define USE_TIMER 1
+//#define USE_TIMER 1
+#define USE_SLEEP 1
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -21,10 +22,11 @@
 #include "esp_system.h"
 #include "esp_partition.h"
 #include "nvs_flash.h"
-#if defined(NTP)
+#include "esp_sleep.h"
 #include "esp_netif.h"
-#include "esp_netif_sntp.h"
-#define NTP_DELAY 5000    // milliseconds delay before first NTP query (3500 seems OK)
+#include "esp_wifi.h"
+#if defined(NTP)
+#include "esp_netif_sntp.h"	// TODO: probably don't need this in main
 #endif
 #define LOG_LOCAL_LEVEL 4   // DEBUG for just this file
 #include "esp_log.h"
@@ -32,6 +34,7 @@
 #include "esp_tls.h"
 #include "esp_http_client.h"
 #include "esp_event.h"
+
 #define ONE_SHOT 1  // one shot or periodic timer
 #ifdef USE_TIMER    // timer to update word
 #include "esp_timer.h"
@@ -63,7 +66,13 @@ static const char *TAG = "daily_word";
 extern "C" void wifi_init_sta(void);
 extern "C" void stream_buf_init(STREAM_BUF *stream_buf, int max_buf_len);
 extern "C" int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart);
+extern "C" int sntp_setup(void);
+extern "C" struct tm get_local_datetime(char* dt_str, const char* tz_posix);
 extern int http_perform_as_stream_reader(STREAM_BUF *stream_buf);
+
+// TODO: tz_posix should only be defined in sntp.c or maybe in menuconfig
+char datetime_str[64];
+const char tz_posix[] = "PST8PDT,M3.2.0/2:00:00,M11.1.0/2:00:00";
 
 #define WORD_LEN    30
 #define TYPE_LEN    30
@@ -104,30 +113,6 @@ char *test_num_str = "0123456789";
 char *test_abc_str = "ABCDEFGHIJ";
 static int test_cnt = 0;
 static void test_refresh(void);
-
-char datetime_str[64];
-const char tz_posix[] = "PST8PDT,M3.2.0/2:00:00,M11.1.0/2:00:00";
-
-struct tm get_local_datetime(char* dt_str, const char* tz_posix)
-{
-	// POSIX time functions
-	time_t now;
-	char strftime_buf[64];
-	struct tm timeinfo;
-	time(&now);
-	// TODO: next 2 line should be done once in app_main()
-	setenv("TZ", tz_posix, 1);  // POSIX timezone
-	tzset();
-	localtime_r(&now, &timeinfo);
-	strftime(dt_str, sizeof(strftime_buf), "%Y-%m-%dT%H:%M:%S", &timeinfo);
-    return timeinfo;
-}
-
-#ifdef USE_TIMER
-// Put this code somewhere else
-static esp_timer_handle_t update_timer;
-const int update_max = 3;
-static int update_cnt = 0;
 
 /**
  * Calculate next display refresh time, specified by day, hour and minute.
@@ -186,6 +171,12 @@ static uint64_t calc_refresh_delay(int day, int hour, int minute, int bRelative)
     return next_sec;
 }
 
+#ifdef USE_TIMER
+// Put this code somewhere else
+static esp_timer_handle_t update_timer;
+const int update_max = 3;
+static int update_cnt = 0;
+
 #ifdef ONE_SHOT
 static void timer_callback(void *arg) {
     struct tm localtime;
@@ -223,7 +214,7 @@ static void timer_callback(void *) {
     }
 }
 #endif
-#endif
+#endif	// USE_TIMER
 
 /**
  * Strip extra spaces. Modify input str in place.
@@ -577,7 +568,6 @@ void update_word(void)
     }
 #else
     // display datetime for debug purposes
-    //vTaskDelay(pdMS_TO_TICKS(NTP_DELAY));
     localtime = get_local_datetime(datetime_str, tz_posix);
     Paint_DrawString_EN(2, usedHeight, datetime_str, &Font16, BLACK, WHITE);
 #endif
@@ -590,11 +580,7 @@ void update_word(void)
     // calculate number of chars per line and number of lines remaining on display
     // Note: display width and height are portrait orientation in Waveshare sample code,
     // I am using display in landscape.
-#if 0
-    int nChar = display_width / (cWidth+1);   // leave 1 pixel between chars
-#else
-    int nChar = display_width / (cWidth);   // leave 1 pixel between chars
-#endif
+    int nChar = display_width / (cWidth);
     int nRow  = (display_height - usedHeight) / (cHeight+1);    // used 40 for first line
     /* TODO: minor bug. 2.7 inch screen calculates to have w=33 for font12.
      * Definition is 107 characters, so it calculates to need 4 rows, but it only uses 3.
@@ -652,36 +638,24 @@ extern "C" void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-#if defined(NTP)
-    ESP_ERROR_CHECK(esp_netif_init());  // I think this is needed for MQTT
-#endif
     wifi_init_sta();
     ESP_LOGI(TAG, "Connected to AP");
 
-#if defined(NTP)
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-    esp_netif_sntp_init(&config);
-#if 0
-    vTaskDelay(pdMS_TO_TICKS(NTP_DELAY));
-#else
-    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK) {
-        printf("Failed to update system time within 10s timeout");
-    }
-#endif
-#endif
+    // TODO: what if not using NTP or if NTP not accessible?
+    // Supposedly can get time from DHCP.
+    int sntp_status = sntp_setup();	// 0==OK
 
 #if REFRESH_TEST==0
     // Fetch from website, extract word-of-the-day, write to display
     update_word();
 
     // Setup timer for next update, sometime after midnight: (day=0, hour=1, minute=5, absolute)
-    uint64_t refresh_sec = calc_refresh_delay(0, 1, 5, 0);
-    uint64_t refresh_microsec = refresh_sec * 1000000;
+    uint64_t refresh_sec = calc_refresh_delay(0, 6, 0, 1);  // wake every 6 hours
 #else
     test_refresh();
     uint64_t refresh_sec = calc_refresh_delay(0, 0, 4, 1);
-    uint64_t refresh_microsec = refresh_sec * 1000000;
 #endif
+    uint64_t refresh_microsec = refresh_sec * 1000000LL;
 
 #ifdef USE_TIMER
     //esp_timer_handle_t publish_timer;
@@ -701,5 +675,15 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(esp_timer_start_periodic(update_timer, REFRESH_INTERVAL));
 #endif
 
+#endif
+
+#ifdef USE_SLEEP
+	esp_wifi_stop();
+	esp_netif_sntp_deinit();
+	
+    const int deep_sleep_sec = refresh_sec;
+    ESP_LOGI(TAG, "Entering deep sleep for %d seconds", deep_sleep_sec);
+    esp_deep_sleep(1000000LL * deep_sleep_sec);
+	
 #endif
 }

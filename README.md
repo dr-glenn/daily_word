@@ -31,4 +31,12 @@ To prevent endless reboot, use these settings in sdkconfig or change with menuco
 CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
 #CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT is not set
 ```
+This program requires larger memory, so y7ou will need to set:
+```
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+```
+If you set this in menuconfig, then sdkconfig will also show:
+```
+# CONFIG_PARTITION_TABLE_SINGLE_APP is not set
+```
 
