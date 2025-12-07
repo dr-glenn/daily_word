@@ -1,4 +1,5 @@
-#include "esp_log.h"
+#define LOG_LOCAL_LEVEL 4   // DEBUG for just this file
+//#include "esp_log.h"
 #include "esp_crt_bundle.h"
 #include "esp_tls.h"
 #include "esp_http_client.h"
@@ -58,7 +59,7 @@ int http_perform_as_stream_reader(STREAM_BUF *stream_buf)
         }
         total_read_len += read_len;
         read_cnt++;
-        ESP_LOGD(TAG, "read_cnt=%d, total_read_len=%d", read_cnt, total_read_len);
+        ESP_LOGI(TAG, "read_cnt=%d, total_read_len=%d", read_cnt, total_read_len);
 #if 1
         // extract the content between start and end srings. stream_buf will contain it.
         match_stat = stream_buf_match(stream_buf, buffer, read_len, bStart);

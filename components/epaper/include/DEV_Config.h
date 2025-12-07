@@ -30,7 +30,6 @@
 #ifndef _DEV_CONFIG_H_
 #define _DEV_CONFIG_H_
 
-//#include <Arduino.h>
 #include <stdint.h>
 #include <stdio.h>
 #include "driver/gpio.h"
@@ -54,15 +53,24 @@
  * GPIO config
 **/
 // gpio_num_t required for ESP-IDF C++ code
+#if 0
 #define EPD_SCK_PIN  (gpio_num_t)18
 #define EPD_MOSI_PIN (gpio_num_t)15
 #define EPD_CS_PIN   (gpio_num_t)5
 #define EPD_RST_PIN  (gpio_num_t)10
 #define EPD_DC_PIN   (gpio_num_t)8
 #define EPD_BUSY_PIN (gpio_num_t)11
+#else
+#define EPD_SCK_PIN  (gpio_num_t)CONFIG_EPD_SCK_PIN
+#define EPD_MOSI_PIN (gpio_num_t)CONFIG_EPD_MOSI_PIN
+#define EPD_CS_PIN   (gpio_num_t)CONFIG_EPD_CS_PIN
+#define EPD_RST_PIN  (gpio_num_t)CONFIG_EPD_RST_PIN
+#define EPD_DC_PIN   (gpio_num_t)CONFIG_EPD_DC_PIN
+#define EPD_BUSY_PIN (gpio_num_t)CONFIG_EPD_BUSY_PIN
+#endif
 
-#define GPIO_PIN_SET   1
-#define GPIO_PIN_RESET 0
+#define GPIO_PIN_SET   HIGH
+#define GPIO_PIN_RESET LOW
 #define PIN_NOT_SET (uint32_t) 999
 
 typedef struct {

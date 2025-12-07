@@ -1,0 +1,49 @@
+<h2 class="word-header-txt">pseudonym</h2>
+              <a class="play-pron wod-autoplay" data-lang="en_us" data-file="pseudo16" data-dir="p" href="javascript:void(0)" title="Listen to the pronunciation of pseudonym">play <span class="play-box"></span></a>
+            </div>
+          </div>
+          <span class="scrollDepth" data-eventName="wotd-headword"></span>
+          <!-- end simple definition header -->
+
+          <div class="word-attributes">
+            <span class="main-attr">noun</span>
+            <!--<span class="word-syllables">fru <span class="dot"></span> gal</span>-->
+            <span class="word-syllables">SOO-duh-nim</span>
+            <!--<span class="pr">\SOO-duh-nim\</span>-->
+          </div>
+          <!-- end word attributes -->
+
+
+
+          <!--Next and previous buttons rendered depending on if we have content-->
+          <div class="nav-arrow-container">
+                          <a href="/word-of-the-day/iconoclast-2025-11-30" class="prev-wod-arrow" rel="nofollow">Prev</a>
+
+            <a href="#" class="next-wod-arrow  disabled"  rel="nofollow">Next</a>
+          </div>
+
+        </div>
+      </div>
+
+      <hr class="blue-divide thin-divide">
+
+      <div class="lr-cols-area clearfix sticky-column d-flex">
+        <div class="left-content">
+          <div class="wod-article-container">
+    
+            <!--1-st part of word-->
+            <div class="wod-definition-container">
+              <h2>What It Means</h2>
+              <p>A pseudonym is a name that someone (such as a writer) uses instead of their real name.</p>
+
+<p>// <a href="https://www.britannica.com/biography/bell-hooks">bell hooks</a> is the <em>pseudonym</em> of the American writer Gloria Jean Watkins.</p>
+
+<p><a href="https://www.merriam-webster.com/dictionary/pseudonym">See the entry ></a></p>
+              <span class="scrollDepth" data-eventName="wotd-definition"></span>     
+
+                <h2>
+                  <span class="wotd-example-label">pseudonym</span> in Context
+                </h2>
+                <div class="wotd-examples">
+                    <div class="left-content-box">
+                        <p>“Edgar Wright, the filmmaker and genre specialist who has given the world modern gems like <em>Shaun of the Dead</em>, <em>Hot Fuzz</em>, and <em>Baby Driver</em>, estimates he was around 13 years old when he read ‘the Bachman Books,’ a collection of four novels that Stephen King published under the <em>pseudonym</em> Richard Bachman during the early years of his career.” — Don Kaye, <em>Den of Geek</em>, 9 Oct. 2025</p>

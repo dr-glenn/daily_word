@@ -11,4 +11,40 @@ menu "ePaper Configuration"
 			bool "EPD_2in7_V2"
 	endchoice
 
+	config EPD_SCK_PIN
+		int "SCK"
+		default 18
+		help
+			GPIO clock pin.
+
+	config EPD_MOSI_PIN
+		int "MOSI"
+		default 23
+		help
+			GPIO MOSI pin.
+
+	config EPD_CS_PIN
+		int "CS"
+		default 5
+		help
+			Chip select pin.
+
+	config EPD_RST_PIN
+		int "RST"
+		default 10
+		help
+			Reset pin.
+
+	config EPD_DC_PIN
+		int "DC"
+		default 8
+		help
+			Data/Command pin.
+
+	config EPD_BUSY_PIN
+		int "BUSY"
+		default 11
+		help
+			Busy status pin.
+																						
 endmenu

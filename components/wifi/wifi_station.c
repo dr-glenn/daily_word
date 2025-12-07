@@ -20,6 +20,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+// TODO: failure to connect to WiFi prints messages but does not return error code
+
 /* The examples use WiFi configuration that you can set via project configuration menu
 
    If you'd rather not, just change the below entries to strings with
@@ -93,9 +95,10 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-void wifi_init_sta(void)
+esp_err_t wifi_init_sta(void)
 {
-    esp_log_level_set("wifi", ESP_LOG_ERROR);
+    int retval = 0;
+    esp_log_level_set("wifi", ESP_LOG_INFO);
 
     s_wifi_event_group = xEventGroupCreate();
 
@@ -153,12 +156,16 @@ void wifi_init_sta(void)
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                  ESP_WIFI_SSID, ESP_WIFI_PASS);
+        retval = ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
                  ESP_WIFI_SSID, ESP_WIFI_PASS);
+        retval = ESP_FAIL;
     } else {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
+        retval = ESP_FAIL;
     }
+    return retval;
 }
 #if 0
 void app_main(void)

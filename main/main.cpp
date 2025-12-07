@@ -10,8 +10,10 @@
  */
 #define REFRESH_TEST 0
 #define NTP 1   // use network time protocol
-//#define USE_TIMER 1
-#define USE_SLEEP 1
+#define USE_TIMER 1
+#define USE_SLEEP !USE_TIMER
+#define BORDER_X    5   // if edges of display need some border
+#define BORDER_Y    2
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -36,7 +38,7 @@
 #include "esp_event.h"
 
 #define ONE_SHOT 1  // one shot or periodic timer
-#ifdef USE_TIMER    // timer to update word
+#if defined(USE_TIMER) && USE_TIMER==1    // timer to update word
 #include "esp_timer.h"
 // ESP timer fnuctions use microseconds
 const uint64_t DAY_SECONDS = 24 * 60 * 60;
@@ -59,11 +61,11 @@ const uint64_t REFRESH_INTERVAL = (REFRESH_SECONDS * 1000000);
 #include "esp_mac.h"
 #include <math.h>
 
-static const char *TAG = "daily_word";
+static const char *TAG = "main";
 //#define MAX_HTTP_RECV_BUFFER 2048
 //#define WORD_URL "https://www.merriam-webster.com/word-of-the-day/"
 
-extern "C" void wifi_init_sta(void);
+extern "C" esp_err_t wifi_init_sta(void);
 extern "C" void stream_buf_init(STREAM_BUF *stream_buf, int max_buf_len);
 extern "C" int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart);
 extern "C" int sntp_setup(void);
@@ -107,7 +109,7 @@ void word_init(WORD_OF_DAY *w)
 #pragma GCC warning "YES have CONFIG_EPD_something"
 #endif
 
-static void update_word(void);
+static void update_word(uint64_t refresh_sec);
 
 char *test_num_str = "0123456789";
 char *test_abc_str = "ABCDEFGHIJ";
@@ -166,12 +168,14 @@ static uint64_t calc_refresh_delay(int day, int hour, int minute, int bRelative)
     h = next_sec / 3600;
     m = floor(next_sec % 3600 / 60);
     s = floor(next_sec % 3600 % 60);
-    ESP_LOGI(TAG, "Set one_shot for %d h %d m %d sec", h, m, s);
+    ESP_LOGI(TAG, "Set delay for %d h %d m %d sec", h, m, s);
 #endif
     return next_sec;
 }
 
-#ifdef USE_TIMER
+// Here are the callback functions for USE_TIMER, either ONE_SHOT or PERIODIC
+// If USE_SLEEP is true then callbacks are not used.
+#if defined(USE_TIMER) && USE_TIMER==1
 // Put this code somewhere else
 static esp_timer_handle_t update_timer;
 const int update_max = 3;
@@ -184,9 +188,10 @@ static void timer_callback(void *arg) {
     ++update_cnt;
     ESP_LOGI(TAG, "callback i=%d", update_cnt);
 #if REFRESH_TEST==0
-    update_word();
     uint64_t refresh_sec = calc_refresh_delay(0, 1, 5, 0);
+    //uint64_t refresh_sec = calc_refresh_delay(0, 0, 5, 1);  // run every 5 minutes
     uint64_t refresh_microsec = refresh_sec * 1000000;
+    update_word(refresh_sec);
     ESP_ERROR_CHECK(esp_timer_start_once(update_timer, refresh_microsec));
 #else
     if (test_cnt < strlen(test_abc_str)) {
@@ -201,13 +206,13 @@ static void timer_callback(void *arg) {
     }
 #endif
 }
-#else
+#else   // periodic timer (not one-shot)
 // Uses REFRESH_INTERVAL for refresh of word
 static void timer_callback(void *) {
     // publish
     ++update_cnt;
     ESP_LOGI("timer", "callback i=%d", update_cnt);
-    update_word();
+    update_word(0LL);
     if (update_cnt > update_max) {
         esp_timer_stop(update_timer);
         ESP_LOGI("timer", "STOP PERIODIC update_timer");
@@ -382,6 +387,32 @@ void pronounce_extract(WORD_OF_DAY *word_t, char* word_buf)
     }
 }
 
+#if 1
+/**
+ * Convert chars such as forward and backward double quotes to ASCII, since our font files can't display them.
+ * This is very tricky since UTF-8 chars can be 1 to 4 bytes long. Therefore substituting ASCII (one byte)
+ * may require shrinking the input buffer (by using memcpy).
+ */
+void convert_chars(char *buffer)
+{
+    const char* funny_char[] = {"\u201C", "\u201D"};    // forward and backward double-quotes
+    int n_funny = 0;
+    ESP_LOGD(TAG, "convert_chars: START buffer = %d", strlen(buffer));
+    for (int i=0; i < sizeof(funny_char) / sizeof(funny_char[0]); i++) {
+        char *p = buffer;
+        int buf_len = strlen(buffer);
+        while ((p = strstr(p, funny_char[i]))) {
+            *p = '"';
+            n_funny++;
+            memcpy(p+1, p+strlen(funny_char[i]), strlen(p+strlen(funny_char[i])));
+            buf_len = buf_len - strlen(funny_char[i]) + 1;    // take away Unicode char, add ASCII
+            buffer[buf_len] = '\0';
+        }
+    }
+    ESP_LOGD(TAG, "convert_chars: END buffer = %d, n_funny = %d", strlen(buffer), n_funny);
+}
+#endif
+
 /**
  * Extract word definition from the HTML stream. Store it in word_t.
  * @param WORD_OF_DAY *word_t a struct for storing extracts from the HTML.
@@ -390,6 +421,7 @@ void pronounce_extract(WORD_OF_DAY *word_t, char* word_buf)
  */
 void define_extract(WORD_OF_DAY *word_t, char* word_buf)
 {
+#if 1
     const char* start = "<h2>What It Means</h2>";
     char* find = strstr(word_buf, start);
     if (!find) {
@@ -402,13 +434,32 @@ void define_extract(WORD_OF_DAY *word_t, char* word_buf)
         char* new_buf = strip_tags(w, find-w);
         ESP_LOGD(TAG, "define_extract: after strip_tags, len = %d", strlen(new_buf));
 		int define_len = strlen(new_buf) < DEFINE_LEN ? strlen(new_buf) : DEFINE_LEN-1;
-        strncpy(word_t->define, new_buf, define_len);
-		word_t->define[define_len] = '\0';
-        ESP_LOGI(TAG, "define_extract: found = %s", word_t->define);
+        new_buf[define_len] = '\0';
+        if (strstr(new_buf, "\u201C") || strstr(new_buf, "\u201D")) {
+            ESP_LOGD(TAG, "Found funny quotes");
+            convert_chars(new_buf);
+        }
+        strcpy(word_t->define, new_buf);
+        word_t->define[define_len] = '\0';
         free(new_buf);
+        }
+#else   // test case with UTF-8 characters
+    char* define_text = "TEST: <em>Decimate</em> can mean both “to destroy a large number of (plants, animals, people, etc.)”";
+    char* new_buf = strip_tags(define_text, strlen(define_text));
+    int define_len = strlen(new_buf) < DEFINE_LEN ? strlen(new_buf) : DEFINE_LEN-1;
+    new_buf[define_len] = '\0';
+    if (strstr(new_buf, "\u201C") || strstr(new_buf, "\u201D")) {
+        ESP_LOGD(TAG, "Found funny quotes");
+        convert_chars(new_buf);
     }
+    strcpy(word_t->define, new_buf);
+    word_t->define[define_len] = '\0';
+    free(new_buf);
+#endif
 }
 
+
+#if defined(REFRESH_TEST) && REFRESH_TEST==1
 void test_refresh(void)
 {
     struct tm localtime;
@@ -481,13 +532,14 @@ void test_refresh(void)
     free(BlackImage);
     BlackImage = NULL;
 }
+#endif  // REFRESH_TEST
 
 /**
  * Fetch word and update display once a day.
  */
-void update_word(void)
+void update_word(uint64_t refresh_sec)
 {
-    struct tm localtime;
+    struct tm t_local;
     STREAM_BUF stream_buf;
     stream_buf_init(&stream_buf, STREAM_BUF_LEN);
     
@@ -510,6 +562,7 @@ void update_word(void)
 
     // Wavesahre ePaper display code follows
     DEV_Module_Init();
+    // NOTE: Waveshare assumes portrait orientation, I use landscape, so swap width and height
     int display_width, display_height;
 #ifdef CONFIG_EPD_29
     display_width = EPD_2IN9_HEIGHT;
@@ -541,61 +594,88 @@ void update_word(void)
     Paint_Clear(WHITE);
 
     // Draw on the canvas
-    uint16_t cWidth, cHeight, usedHeight;
-    // Display the word
-    sFONT* font = &Font24;
-    cWidth = font->Width; cHeight = font->Height;
-    Paint_DrawString_EN(2, 0, word_of_day.word, font, WHITE, BLACK);
-    usedHeight = cHeight + 1;
+    uint16_t cWidth, cHeight, usedHeight, cWidth16, cWidth12, cHeight16, cHeight12;
+    // Store width and height of characters for different fonts
+    sFONT* font = &Font16;
+    cWidth16 = font->Width; cHeight16 = font->Height;
+    font = &Font12;
+    cWidth12 = font->Width; cHeight12 = font->Height;
 
-    // Display the pronounciation
-    font = &Font16;
+    // DISPLAY THE WORD
+    font = &Font24;
     cWidth = font->Width; cHeight = font->Height;
+    Paint_DrawString_EN(BORDER_X, BORDER_Y, word_of_day.word, font, WHITE, BLACK);
+    usedHeight = cHeight + 1 + BORDER_Y;
+
+    // DISPLAY THE PRONOUNCIATION
+    font = &Font16;
+    cWidth = cWidth16; cHeight = cHeight16;
 #if 1   // for debugging datetime issues, set this to 0
-    // Display type of word (e.g., noun, adjective) and pronounciation.
+    // DISPLAY THE TYPE OF WORD (e.g., noun, adjective) and pronounciation.
     // If both are longer than one line, then display on two lines.
-    Paint_DrawString_EN(2, usedHeight, word_of_day.type, font, BLACK, WHITE);
-    int column = cWidth * strlen(word_of_day.type) + 5;
-    if ((column + cWidth + 5 + cWidth * strlen(word_of_day.pronounce)) < display_width) {
+    Paint_DrawString_EN(BORDER_X, usedHeight, word_of_day.type, font, BLACK, WHITE);
+    int column = BORDER_X + cWidth * strlen(word_of_day.type) + 3;  // location of separator between type and pronounce
+    if ((column + cWidth + 3 + cWidth * strlen(word_of_day.pronounce)) < display_width) {
+        // Both type + pronounce can fit on one line
         Paint_DrawString_EN(column, usedHeight, "|", font, BLACK, WHITE);
-        column += cWidth + 5;
+        column += cWidth + 3;
         Paint_DrawString_EN(column, usedHeight, word_of_day.pronounce, font, BLACK, WHITE);
     }
     else {
-        // must put pronounce on new line, because pronounce takes up too must space
+        // must put pronounce on new line, because pronounce takes up too much space
         usedHeight += cHeight + 1;
-        Paint_DrawString_EN(2, usedHeight, word_of_day.pronounce, font, BLACK, WHITE);
+        Paint_DrawString_EN(BORDER_X, usedHeight, word_of_day.pronounce, font, BLACK, WHITE);
     }
 #else
     // display datetime for debug purposes
-    localtime = get_local_datetime(datetime_str, tz_posix);
+    t_local = get_local_datetime(datetime_str, tz_posix);
     Paint_DrawString_EN(2, usedHeight, datetime_str, &Font16, BLACK, WHITE);
 #endif
     usedHeight += cHeight + 1;
 
-    // Display the definition. Limit it to the number of characters that remain on the screen.
+    // DISPLAY THE DEFINITION
+    // Limit it to the number of characters that remain on the screen.
     // Remaining characters depends on character width and number of rows as determined by font size.
     font = &Font12;
-    cWidth = font->Width; cHeight = font->Height;
+    cWidth = cWidth12; cHeight = cHeight12;
     // calculate number of chars per line and number of lines remaining on display
     // Note: display width and height are portrait orientation in Waveshare sample code,
     // I am using display in landscape.
-    int nChar = display_width / (cWidth);
-    int nRow  = (display_height - usedHeight) / (cHeight+1);    // used 40 for first line
-    /* TODO: minor bug. 2.7 inch screen calculates to have w=33 for font12.
+    int nChar, nRow, nChar16, nRow16, nChar12, nRow12;
+    nChar = nChar16 = (display_width - BORDER_X) / (cWidth16);
+    nRow = nRow16  = (display_height -BORDER_Y - usedHeight) / (cHeight16+1);
+    if (strlen(word_of_day.define) < nRow*nChar) {
+        font = &Font16;
+        cHeight = cHeight16;
+    }
+    else {
+        nChar = nChar12 = (display_width - BORDER_X) / (cWidth12);
+        nRow = nRow12  = (display_height -BORDER_Y - usedHeight) / (cHeight12+1);
+        font = &Font12;
+        cHeight = cHeight12;
+    }
+    /* TODO: minor bug. 2.7 inch screen calculates to have nChar=33 for font12.
      * Definition is 107 characters, so it calculates to need 4 rows, but it only uses 3.
      * Oh, maybe the fixed font chars already include 1 pixel width.
      */
     ESP_LOGD(TAG, "definition max display: nRow=%d, nChar=%d\n", nRow, nChar);
     ESP_LOGD(TAG, "definition: len=%d, nRow=%d", strlen(word_of_day.define), (strlen(word_of_day.define)/nChar)+1);
     if (strlen(word_of_day.define) > nRow*nChar) word_of_day.define[nRow*nChar] = '\0';
-    Paint_DrawString_EN(0, usedHeight, word_of_day.define, font, BLACK, WHITE);
+    Paint_DrawString_EN(BORDER_X, usedHeight, word_of_day.define, font, BLACK, WHITE);
     usedHeight += (cHeight + 1) * (strlen(word_of_day.define) / nChar + 1);
 
     // TODO: if a line remains, maybe display the datetime
+    font = &Font12;
+    cHeight = cHeight12;
+    t_local = get_local_datetime(datetime_str, tz_posix);
+    time_t tsec = mktime(&t_local) + refresh_sec;
+    struct tm timeinfo;
+    localtime_r(&tsec, &timeinfo);
+    strftime(datetime_str, sizeof(datetime_str), "%Y-%m-%dT%H:%M:%S", &timeinfo);
+    ESP_LOGI(TAG, "rerun at %s", datetime_str);
     if ((usedHeight + cHeight) < display_height) {
-        localtime = get_local_datetime(datetime_str, tz_posix);
-        Paint_DrawString_EN(2, usedHeight, datetime_str, font, WHITE, BLACK);
+        //char strftime_buf[64];
+        Paint_DrawString_EN(BORDER_X, usedHeight, datetime_str, font, WHITE, BLACK);
     }
 
     // Send canvas to the display
@@ -638,26 +718,32 @@ extern "C" void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    wifi_init_sta();
+    ESP_ERROR_CHECK(wifi_init_sta());
     ESP_LOGI(TAG, "Connected to AP");
 
     // TODO: what if not using NTP or if NTP not accessible?
     // Supposedly can get time from DHCP.
     int sntp_status = sntp_setup();	// 0==OK
 
-#if REFRESH_TEST==0
-    // Fetch from website, extract word-of-the-day, write to display
-    update_word();
+#if !defined(REFRESH_TEST) || REFRESH_TEST==0
+#if defined(USE_TIMER) && USE_TIMER==1
+    // Setup timer for next update, sometime after midnight: (day=0, hour=1, minute=5, absolute=0)
+    uint64_t refresh_sec = calc_refresh_delay(0, 1, 5, 0);  // run at 1:05 AM every day
+    //uint64_t refresh_sec = calc_refresh_delay(0, 0, 5, 1);  // run every 5 minutes
+#else   // assume USE_SLEEP
+    uint64_t refresh_sec = calc_refresh_delay(0, 6, 0, 1);  // wakeup every 6 hours
+#endif
 
-    // Setup timer for next update, sometime after midnight: (day=0, hour=1, minute=5, absolute)
-    uint64_t refresh_sec = calc_refresh_delay(0, 6, 0, 1);  // wake every 6 hours
-#else
+#else   // REFRESH_TEST
     test_refresh();
     uint64_t refresh_sec = calc_refresh_delay(0, 0, 4, 1);
 #endif
     uint64_t refresh_microsec = refresh_sec * 1000000LL;
 
-#ifdef USE_TIMER
+    // Fetch from website, extract word-of-the-day, write to display
+    update_word(refresh_sec);
+
+#if defined(USE_TIMER) && USE_TIMER==1
     //esp_timer_handle_t publish_timer;
     const esp_timer_create_args_t timer_args = {
         .callback = &timer_callback,
@@ -670,20 +756,20 @@ extern "C" void app_main(void)
     // one-shot timer will restart itself in the timer callback
     ESP_LOGI("timer", "start_once, seconds=%llu", refresh_sec);
     ESP_ERROR_CHECK(esp_timer_start_once(update_timer, refresh_microsec));
-#else
+#else   // Periodic timer
     ESP_LOGI("timer", "start_periodic");
     ESP_ERROR_CHECK(esp_timer_start_periodic(update_timer, REFRESH_INTERVAL));
 #endif
 
-#endif
+#endif  // USE_TIMER
 
-#ifdef USE_SLEEP
-	esp_wifi_stop();
+#if defined(USE_SLEEP) && USE_SLEEP==1
 	esp_netif_sntp_deinit();
+	esp_wifi_stop();
 	
-    const int deep_sleep_sec = refresh_sec;
-    ESP_LOGI(TAG, "Entering deep sleep for %d seconds", deep_sleep_sec);
-    esp_deep_sleep(1000000LL * deep_sleep_sec);
+    const uint64_t deep_sleep_microsec = refresh_microsec;
+    ESP_LOGI(TAG, "Entering deep sleep for %llu usec", refresh_microsec);
+    esp_deep_sleep(deep_sleep_microsec);
 	
-#endif
+#endif  // USE_SLEEP
 }

@@ -3,6 +3,8 @@
 #include <malloc.h>
 #include <stdbool.h>
 #include <string.h>
+#define LOG_LOCAL_LEVEL 4   // DEBUG for just this file
+#include "esp_log.h"
 #include "esp_err.h"
 #include "stream_buf.h"
 #include "word_site.h"
@@ -10,6 +12,7 @@
 static bool part_match = false;	// partial match of either start or end
 static bool found_start = false;	// start has been found
 static bool found_end = false;		// end has been found
+static const char *TAG = "stream_buf";
 
 void stream_buf_init(STREAM_BUF *stream_buf, int max_buf_len)
 {
@@ -40,6 +43,7 @@ int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart)
 	 */
 	int retval = 0;
 	static char* match_ptr;
+	esp_log_level_set(TAG, ESP_LOG_DEBUG);
 	
 	if (bStart) {
 		// look for start match
@@ -51,11 +55,13 @@ int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart)
 		// look for end match
 		if (!part_match) {
 			match_ptr = stream_buf->match_end;
+			ESP_LOGD(TAG, "1: match_ptr = %s", match_ptr);
 		}
 	}
 	
 	for (int i = 0; i < blen; i++) {
 		if (*buf == *match_ptr) {
+			ESP_LOGD(TAG, "match char = %c", *buf);
 			if (!part_match) {
 				// save stream_buf location in case we have to back out
 				stream_buf->good_idx = stream_buf->idx;
@@ -70,12 +76,17 @@ int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart)
 				// found the match we're looking for
 				if (bStart) {
 					// found start
+					bStart = false;
+					ESP_LOGI(TAG, "found match_start");
 					part_match = false;
 					found_start = true;
 					stream_buf->good_idx = stream_buf->idx;
+					match_ptr = stream_buf->match_end;
+					ESP_LOGD(TAG, "2: match_ptr = %s", match_ptr);
 				}
 				else {
 					// found end
+					ESP_LOGI(TAG, "found match_end");
 					part_match = false;
 					found_end = true;
 					stream_buf->buffer[stream_buf->idx] = '\0';
@@ -88,6 +99,11 @@ int stream_buf_match(STREAM_BUF *stream_buf, char *buf, int blen, bool bStart)
 			if (found_start) {
 				// all chars copied to stream_buf until found_end==true
 				stream_buf->buffer[stream_buf->idx++] = *buf;
+				// ==== ERROR: we never found match_end. Print the buffer. ==== //
+				if (false && stream_buf->idx >= STREAM_BUF_LEN) {
+					stream_buf->buffer[stream_buf->idx - 1] = '\0';
+					printf(stream_buf->buffer);
+				}
 				ESP_ERROR_CHECK((stream_buf->idx >= STREAM_BUF_LEN) ? ESP_FAIL : ESP_OK);
 			}
 			else {
