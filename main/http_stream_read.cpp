@@ -39,6 +39,12 @@ int http_perform_as_stream_reader(STREAM_BUF *stream_buf)
     config.crt_bundle_attach = esp_crt_bundle_attach;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
+    // 3. CRITICAL: Set a browser User-Agent header to bypass the 403 error
+    esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    // Optional: Add accept headers to look even more like a real browser
+    esp_http_client_set_header(client, "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+    esp_http_client_set_header(client, "Accept-Language", "en-US,en;q=0.5");
+
     esp_err_t err;
     if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
@@ -50,6 +56,11 @@ int http_perform_as_stream_reader(STREAM_BUF *stream_buf)
     ESP_LOGI(TAG, "HTTP Stream reader Status = %d, content_length = %" PRId64,
                     esp_http_client_get_status_code(client),
                     esp_http_client_get_content_length(client));
+    if (esp_http_client_get_status_code(client) == 403) {
+        ESP_LOGE(TAG, "Connection denied for bot: %d", 403);
+        free(buffer);
+        return -1;
+    }
     int total_read_len = 0, read_len;
     int read_cnt = 0;
     while (total_read_len < content_length) {
@@ -83,6 +94,7 @@ int http_perform_as_stream_reader(STREAM_BUF *stream_buf)
     ESP_LOGI(TAG, "finished read, total_read_len = %d\n", total_read_len);
 	ESP_LOGI(TAG, "stream_buf len = %d\n", stream_buf->idx);
 	ESP_LOGD(TAG, "stream_buf.buffer len = %d\n", strlen(stream_buf->buffer));
+    // TODO: probably don't need to close, cleanup should do that.
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
     // TODO: caller should later free stream_buf
